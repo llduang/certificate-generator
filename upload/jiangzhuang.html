@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>奖状生成器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f0;
+            --bg-card: #ffffff;
+            --fg: #1a1a1a;
+            --fg-muted: #666666;
+            --accent: #b8860b;
+            --border: #d4d4d4;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container { max-width: 600px; margin: 0 auto; }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group:last-child { margin-bottom: 0; }
+
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--fg);
+        }
+
+        .hint {
+            font-weight: normal;
+            color: var(--fg-muted);
+            font-size: 13px;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 15px;
+            background: #fafafa;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            background: #1a1a1a;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn:hover { background: #333; }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled {
+            background: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .names-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .name-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .name-tag button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            color: #999;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .name-tag button:hover { color: #c00; }
+
+        .progress {
+            margin-top: 16px;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: 13px;
+            color: var(--fg-muted);
+            margin-top: 8px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0 0 24px 0;
+            color: var(--fg);
+        }
+
+        /* 隐藏的渲染区域 */
+        #renderArea {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            background: white;
+        }
+
+        /* 奖状页面样式 - A4横向 */
+        .certificate-page {
+            width: 297mm;
+            height: 210mm;
+            padding: 25mm 35mm;
+            background: white;
+            font-family: "KaiTi", "楷体", "STKaiti", "SimSun", "宋体", serif;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cert-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .cert-line1 {
+            font-size: 22pt;
+            text-align: center;
+            margin-bottom: 15mm;
+            letter-spacing: 2pt;
+        }
+
+        .cert-line2 {
+            font-size: 42pt;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20mm;
+            letter-spacing: 6pt;
+        }
+
+        .cert-footer {
+            position: absolute;
+            bottom: 25mm;
+            right: 35mm;
+            text-align: right;
+        }
+
+        .cert-org {
+            font-size: 16pt;
+            margin-bottom: 5mm;
+        }
+
+        .cert-date {
+            font-size: 16pt;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>奖状生成器</h1>
+        
+        <div class="card">
+            <div class="form-group">
+                <label>前缀</label>
+                <input type="text" id="prefix" value="奖给">
+            </div>
+
+            <div class="form-group">
+                <label>
+                    姓名
+                    <span class="hint">（多个姓名用回车、逗号、顿号或空格分隔）</span>
+                </label>
+                <textarea id="names" placeholder="每行一个姓名，或用逗号分隔"></textarea>
+                <div id="namesList" class="names-list"></div>
+            </div>
+
+            <div class="form-group">
+                <label>奖项</label>
+                <input type="text" id="award" placeholder="如：学习进步奖">
+            </div>
+
+            <div class="form-group">
+                <label>单位</label>
+                <input type="text" id="organization" value="定州市南城回民中学">
+            </div>
+
+            <div class="form-group">
+                <label>时间</label>
+                <input type="text" id="date">
+            </div>
+        </div>
+
+        <button id="generateBtn" class="btn">生成PDF</button>
+
+        <div id="progress" class="progress">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div id="progressText" class="progress-text"></div>
+        </div>
+    </div>
+
+    <!-- 隐藏的渲染区域 -->
+    <div id="renderArea"></div>
+
+    <script>
+        // 初始化默认日期（带日）
+        function initDate() {
+            var now = new Date();
+            var year = now.getFullYear();
+            var month = now.getMonth() + 1;
+            var day = now.getDate();
+            document.getElementById('date').value = year + '年' + month + '月' + day + '日';
+        }
+
+        // 解析姓名
+        function parseNames(input) {
+            if (!input || !input.trim()) return [];
+            return input
+                .split(/[\n,，、\s]+/)
+                .map(function(n) { return n.trim(); })
+                .filter(function(n) { return n.length > 0; })
+                .filter(function(n, i, arr) { return arr.indexOf(n) === i; });
+        }
+
+        // 更新姓名列表显示
+        function updateNamesList() {
+            var input = document.getElementById('names').value;
+            var names = parseNames(input);
+            var container = document.getElementById('namesList');
+            
+            if (names.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            var html = '';
+            for (var i = 0; i < names.length; i++) {
+                html += '<span class="name-tag">' + names[i] + '<button onclick="removeName(' + i + ')" title="删除">×</button></span>';
+            }
+            container.innerHTML = html;
+        }
+
+        // 删除单个姓名
+        function removeName(index) {
+            var names = parseNames(document.getElementById('names').value);
+            names.splice(index, 1);
+            document.getElementById('names').value = names.join('\n');
+            updateNamesList();
+        }
+
+        // 创建奖状HTML
+        function createCertificateHTML(prefix, name, award, organization, date) {
+            return '\
+                <div class="certificate-page">\
+                    <div class="cert-content">\
+                        <div class="cert-line1">' + prefix + ': ' + name + '</div>\
+                        <div class="cert-line2">' + award + '</div>\
+                    </div>\
+                    <div class="cert-footer">\
+                        <div class="cert-org">' + organization + '</div>\
+                        <div class="cert-date">' + date + '</div>\
+                    </div>\
+                </div>\
+            ';
+        }
+
+        // 生成PDF
+        async function generatePDF() {
+            var jsPDF = window.jspdf.jsPDF;
+            
+            var prefix = document.getElementById('prefix').value || '奖给';
+            var names = parseNames(document.getElementById('names').value);
+            var award = document.getElementById('award').value;
+            var organization = document.getElementById('organization').value;
+            var date = document.getElementById('date').value;
+
+            if (names.length === 0) {
+                alert('请输入姓名');
+                return;
+            }
+
+            if (!award || !award.trim()) {
+                alert('请输入奖项');
+                return;
+            }
+
+            var btn = document.getElementById('generateBtn');
+            var progressDiv = document.getElementById('progress');
+            var progressFill = document.getElementById('progressFill');
+            var progressText = document.getElementById('progressText');
+
+            btn.disabled = true;
+            btn.textContent = '生成中...';
+            progressDiv.style.display = 'block';
+
+            // 创建PDF，A4横向
+            var pdf = new jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            var renderArea = document.getElementById('renderArea');
+
+            for (var i = 0; i < names.length; i++) {
+                var name = names[i];
+
+                // 更新进度
+                var percent = Math.round(((i + 1) / names.length) * 100);
+                progressFill.style.width = percent + '%';
+                progressText.textContent = '正在生成: ' + (i + 1) + ' / ' + names.length;
+
+                // 创建奖状HTML
+                var certDiv = document.createElement('div');
+                certDiv.innerHTML = createCertificateHTML(prefix, name, award, organization, date);
+                var certElement = certDiv.firstElementChild;
+                renderArea.appendChild(certElement);
+
+                // 等待渲染
+                await new Promise(function(resolve) { setTimeout(resolve, 100); });
+
+                // 使用html2canvas渲染
+                var canvas = await html2canvas(certElement, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+
+                // 如果不是第一页，添加新页
+                if (i > 0) {
+                    pdf.addPage();
+                }
+
+                // 添加到PDF（A4横向：297mm x 210mm）
+                var imgData = canvas.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210);
+
+                // 清理
+                renderArea.removeChild(certElement);
+            }
+
+            // 保存
+            var filename = award + '.pdf';
+            pdf.save(filename);
+
+            btn.disabled = false;
+            btn.textContent = '生成PDF';
+            
+            setTimeout(function() {
+                progressDiv.style.display = 'none';
+                progressFill.style.width = '0%';
+            }, 1000);
+        }
+
+        // 事件绑定
+        document.addEventListener('DOMContentLoaded', function() {
+            initDate();
+            updateNamesList();
+
+            document.getElementById('names').addEventListener('input', updateNamesList);
+            document.getElementById('generateBtn').addEventListener('click', generatePDF);
+        });
+    </script>
+</body>
+</html>
