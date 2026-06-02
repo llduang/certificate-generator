@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -37,6 +37,126 @@ function getDefaultDate(): string {
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`
 }
 
+// A4 横向尺寸（mm）
+const A4_LANDSCAPE_WIDTH_MM = 297
+const A4_LANDSCAPE_HEIGHT_MM = 210
+
+// 奖状预览组件 - 独立组件，避免 useCallback 导致的闪烁
+function CertificatePreview({
+  name,
+  prefix,
+  award,
+  organization,
+  date,
+  scale = 1,
+}: {
+  name: string
+  prefix: string
+  award: string
+  organization: string
+  date: string
+  scale?: number
+}) {
+  return (
+    <div
+      style={{
+        width: `${A4_LANDSCAPE_WIDTH_MM}mm`,
+        height: `${A4_LANDSCAPE_HEIGHT_MM}mm`,
+        padding: '3.175cm 2.54cm',
+        background: 'white',
+        fontFamily: '"华文行楷", "STXingka", "楷体", "KaiTi", "STKaiti", serif',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        transform: `scale(${scale})`,
+        transformOrigin: 'top left',
+        overflow: 'hidden',
+        lineHeight: 'normal',
+      }}
+    >
+      {/* 空行1 */}
+      <div style={{ height: '50pt', lineHeight: '50pt', fontSize: '36pt' }}>
+        &nbsp;
+      </div>
+      {/* 空行2 */}
+      <div style={{ height: '50pt', lineHeight: '50pt', fontSize: '36pt' }}>
+        &nbsp;
+      </div>
+      {/* 奖给: 姓名 */}
+      <div
+        style={{
+          fontSize: '36pt',
+          lineHeight: '50pt',
+          textIndent: '2.54cm',
+        }}
+      >
+        <span style={{ fontSize: '36pt' }}>{prefix}:</span>
+        <span style={{ fontSize: '36pt' }}>&nbsp;</span>
+        <span style={{ fontSize: '42pt' }}>{name}</span>
+      </div>
+      {/* 奖项名称 */}
+      <div
+        style={{
+          textAlign: 'center',
+          fontSize: '110pt',
+          lineHeight: '1.15',
+          marginTop: '8pt',
+          transform: 'scaleX(0.8)',
+          transformOrigin: 'center center',
+        }}
+      >
+        {award}
+      </div>
+      {/* 空行 */}
+      <div
+        style={{
+          height: '18pt',
+          lineHeight: '18pt',
+          fontSize: '18pt',
+          fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
+        }}
+      >
+        &nbsp;
+      </div>
+      {/* 空行 */}
+      <div
+        style={{
+          height: '18pt',
+          lineHeight: '18pt',
+          fontSize: '18pt',
+          fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
+        }}
+      >
+        &nbsp;
+      </div>
+      {/* 单位 */}
+      <div
+        style={{
+          textAlign: 'center',
+          fontSize: '18pt',
+          lineHeight: '21pt',
+          fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
+          letterSpacing: '1pt',
+        }}
+      >
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{organization}
+      </div>
+      {/* 日期 */}
+      <div
+        style={{
+          textAlign: 'center',
+          fontSize: '18pt',
+          lineHeight: '21pt',
+          fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
+          letterSpacing: '1pt',
+        }}
+      >
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{date}
+      </div>
+    </div>
+  )
+}
+
 export default function CertificateGenerator() {
   const [prefix, setPrefix] = useState('奖给')
   const [namesInput, setNamesInput] = useState('')
@@ -49,7 +169,9 @@ export default function CertificateGenerator() {
   const [progressText, setProgressText] = useState('')
   const [fontLoaded, setFontLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<'form' | 'preview'>('form')
+  const [previewScale, setPreviewScale] = useState(0.42)
   const renderAreaRef = useRef<HTMLDivElement>(null)
+  const previewContainerRef = useRef<HTMLDivElement>(null)
 
   const names = parseNames(namesInput)
 
@@ -57,7 +179,6 @@ export default function CertificateGenerator() {
   useEffect(() => {
     const loadFont = async () => {
       try {
-        // 先检查是否已经有这个字体
         const loadedFonts = document.fonts
         let hasFont = false
         for (const font of loadedFonts) {
@@ -71,132 +192,66 @@ export default function CertificateGenerator() {
           return
         }
 
-        // 通过FontFace API加载
         const font = new FontFace('华文行楷', 'url(/fonts/STXINGKA.TTF)')
         const loaded = await font.load()
         document.fonts.add(loaded)
         setFontLoaded(true)
       } catch (e) {
         console.warn('华文行楷字体加载失败，将使用楷体替代:', e)
-        setFontLoaded(true) // 仍然允许使用，只是用fallback字体
+        setFontLoaded(true)
       }
     }
     loadFont()
   }, [])
 
-  // 更新预览姓名
+  // 当用户修改姓名输入时，重置预览为第一个姓名
   useEffect(() => {
-    if (names.length > 0) {
-      setPreviewName(names[0])
+    const parsed = parseNames(namesInput)
+    if (parsed.length > 0) {
+      setPreviewName(parsed[0])
     }
-  }, [names])
+  }, [namesInput])
 
-  // 奖状预览组件 - 精确匹配Word模板
-  const CertificatePreview = useCallback(
-    ({ name, scale = 1 }: { name: string; scale?: number }) => {
-      return (
-        <div
-          style={{
-            width: '297mm',
-            height: '210mm',
-            padding: '3.175cm 2.54cm',
-            background: 'white',
-            fontFamily: '"华文行楷", "STXingka", "楷体", "KaiTi", "STKaiti", serif',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            overflow: 'hidden',
-            lineHeight: 'normal',
-          }}
-        >
-          {/* 空行1 */}
-          <div style={{ height: '50pt', lineHeight: '50pt', fontSize: '36pt' }}>
-            &nbsp;
-          </div>
-          {/* 空行2 */}
-          <div style={{ height: '50pt', lineHeight: '50pt', fontSize: '36pt' }}>
-            &nbsp;
-          </div>
-          {/* 奖给: 姓名 */}
-          <div
-            style={{
-              fontSize: '36pt',
-              lineHeight: '50pt',
-              textIndent: '2.54cm',
-            }}
-          >
-            <span style={{ fontSize: '36pt' }}>{prefix}:</span>
-            <span style={{ fontSize: '36pt' }}>&nbsp;</span>
-            <span style={{ fontSize: '42pt' }}>{name}</span>
-          </div>
-          {/* 奖项名称 */}
-          <div
-            style={{
-              textAlign: 'center',
-              fontSize: '110pt',
-              lineHeight: '1.15',
-              marginTop: '8pt',
-              transform: 'scaleX(0.8)',
-              transformOrigin: 'center center',
-            }}
-          >
-            {award}
-          </div>
-          {/* 空行 */}
-          <div
-            style={{
-              height: '18pt',
-              lineHeight: '18pt',
-              fontSize: '18pt',
-              fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
-            }}
-          >
-            &nbsp;
-          </div>
-          {/* 空行 */}
-          <div
-            style={{
-              height: '18pt',
-              lineHeight: '18pt',
-              fontSize: '18pt',
-              fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
-            }}
-          >
-            &nbsp;
-          </div>
-          {/* 单位 */}
-          <div
-            style={{
-              textAlign: 'center',
-              fontSize: '18pt',
-              lineHeight: '21pt',
-              fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
-              letterSpacing: '1pt',
-            }}
-          >
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{organization}
-          </div>
-          {/* 日期 */}
-          <div
-            style={{
-              textAlign: 'center',
-              fontSize: '18pt',
-              lineHeight: '21pt',
-              fontFamily: '"华文楷体", "楷体", "KaiTi", "STKaiti", serif',
-              letterSpacing: '1pt',
-            }}
-          >
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{date}
-          </div>
-        </div>
-      )
-    },
-    [prefix, award, organization, date]
-  )
+  // 响应式计算预览缩放比例
+  const calculateScale = useCallback(() => {
+    if (!previewContainerRef.current) return
 
-  // 生成PDF（使用浏览器打印方式 - 最高质量）
+    const container = previewContainerRef.current
+    const containerWidth = container.clientWidth - 32 // 减去内边距 (p-4 = 16px * 2)
+    const containerHeight = container.clientHeight - 32
+
+    // 297mm 在 96 DPI 下 ≈ 1122.5px
+    const certWidthPx = (A4_LANDSCAPE_WIDTH_MM / 25.4) * 96
+    const certHeightPx = (A4_LANDSCAPE_HEIGHT_MM / 25.4) * 96
+
+    // 根据容器宽度计算最大缩放比例（留一点间距）
+    const scaleByWidth = containerWidth / certWidthPx
+    const scaleByHeight = containerHeight / certHeightPx
+
+    // 取较小值，确保奖状完全可见
+    const newScale = Math.min(scaleByWidth, scaleByHeight, 0.6) * 0.95
+
+    setPreviewScale(newScale)
+  }, [])
+
+  // 监听容器大小变化
+  useEffect(() => {
+    calculateScale()
+
+    const resizeObserver = new ResizeObserver(() => {
+      calculateScale()
+    })
+
+    if (previewContainerRef.current) {
+      resizeObserver.observe(previewContainerRef.current)
+    }
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [calculateScale, activeTab])
+
+  // 生成PDF
   const generatePDF = async () => {
     if (names.length === 0) {
       alert('请输入姓名')
@@ -308,7 +363,7 @@ export default function CertificateGenerator() {
     }
   }
 
-  // 打印奖状（使用浏览器打印 - 最高质量矢量输出）
+  // 打印奖状
   const printCertificates = () => {
     if (names.length === 0) {
       alert('请输入姓名')
@@ -425,7 +480,6 @@ export default function CertificateGenerator() {
       <body>
         ${certificatesHTML}
         <script>
-          // 等待字体加载完成后再打印
           document.fonts.ready.then(function() {
             setTimeout(function() { window.print(); }, 800);
           });
@@ -452,6 +506,12 @@ export default function CertificateGenerator() {
     setDate(getDefaultDate())
     setPreviewName('张梦凡')
   }
+
+  // 计算预览容器实际像素尺寸
+  const certWidthPx = (A4_LANDSCAPE_WIDTH_MM / 25.4) * 96
+  const certHeightPx = (A4_LANDSCAPE_HEIGHT_MM / 25.4) * 96
+  const scaledWidth = certWidthPx * previewScale
+  const scaledHeight = certHeightPx * previewScale
 
   return (
     <div>
@@ -662,18 +722,26 @@ export default function CertificateGenerator() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-auto bg-gray-100/80 rounded-lg p-4 md:p-6">
+                <div
+                  ref={previewContainerRef}
+                  className="bg-gray-100/80 rounded-lg p-4 md:p-6 flex items-center justify-center"
+                  style={{ minHeight: '340px' }}
+                >
                   <div
-                    className="relative"
                     style={{
-                      width: `calc(297mm * 0.42)`,
-                      height: `calc(210mm * 0.42)`,
+                      width: `${scaledWidth}px`,
+                      height: `${scaledHeight}px`,
                       overflow: 'hidden',
+                      position: 'relative',
                     }}
                   >
                     <CertificatePreview
                       name={names.length > 0 ? previewName : '张梦凡'}
-                      scale={0.42}
+                      prefix={prefix}
+                      award={award}
+                      organization={organization}
+                      date={date}
+                      scale={previewScale}
                     />
                   </div>
                 </div>
