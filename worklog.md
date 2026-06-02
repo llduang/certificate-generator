@@ -52,3 +52,21 @@ Stage Summary:
 - 支持批量PDF导出和浏览器直接打印
 - 布局精确匹配Word模板
 - 可部署到Cloudflare Pages
+
+---
+Task ID: 1-10
+Agent: main + full-stack-developer subagent
+Task: 增加成绩分析功能
+
+Work Log:
+- 安装了xlsx依赖库用于Excel解析
+- 将现有奖状生成器代码提取到src/components/certificate-generator.tsx
+- 创建了完整的成绩分析组件src/components/grade-analysis.tsx
+- 重写了src/app/page.tsx为导航外壳，支持两个功能切换
+- 实现了所有9项需求：文件上传解析、班级Sheet筛选、数据清洗、进步分析、并列处理、双维度排名、结果导出、交互体验、班级维度分析
+
+Stage Summary:
+- 奖状生成器功能完整保留，不受影响
+- 新增成绩分析功能：上传两个Excel文件，自动解析排名数据，计算进步情况
+- 页面顶部有功能切换按钮（奖状生成/成绩分析）
+- 静态导出构建成功，可部署到Cloudflare Pages
